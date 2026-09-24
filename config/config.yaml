@@ -1,0 +1,41 @@
+# Runtime parameters — loaded by AgentRegistry, passed as Graph(config=...).
+# SEPARATE from config/agent.yaml (the static manifest): agent.yaml is the
+# registry discovery entry point, this file is what self.config.get(...) reads.
+
+max_retry: 3
+timeout_s: 30
+
+# HITL (D6 interrupt) — the approval gate lives in the inner ApprovalRouteNode.
+# memory_enabled is mandatory whenever hitl.enabled is true: the checkpointer is
+# what makes interrupt() pause/resume work (ADR-016 D5).
+memory_enabled: true
+hitl:
+  enabled: true
+  max_hitl: 8
+  # Deployment policy for the blocking wait — NOT a payment-authorisation switch.
+  #
+  # The Marketplace runner is one-shot: it has no resume channel, and the framework
+  # adapter (shared/bootstrap/marketplace_app.py) treats AWAITING_HUMAN as a failure
+  # exactly like an error. With an unconditional interrupt() every invocation therefore
+  # surfaces to the user as "agent failed" and the approval is never actually reachable
+  # by anyone — the gate protects nothing while making the agent unusable.
+  #
+  # When this is false the approval node skips the *wait for a human* and lands on the
+  # same conservative path the automated-caller branch already uses:
+  # approval_decision = "pending_review", which PaymentScheduleNode refuses to pay on.
+  # No payment is ever auto-approved by this flag; only the blocking wait is dropped,
+  # and the invoice still leaves the agent explicitly marked as awaiting human review.
+  #
+  # Set back to true on any deployment that has a real HITL resume channel
+  # (an AgentGateway session able to deliver interrupt feedback).
+  confirmation_required: false
+
+# Payment safety: never schedule a payment without an explicit "approved" decision.
+payment_auto_schedule: false
+
+# Amount-tier approval routing (JPY). department_head <= 100k, finance_manager <= 1M,
+# anything above routes to the CFO tier.
+approval_tiers:
+  department_head: 100000
+  finance_manager: 1000000
+  cfo: null
